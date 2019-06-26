@@ -4,10 +4,10 @@ admins:
 tutors: []
 groups_student_choice: true
 use_classrooms: false
-accessible: false
+accessible: true
 allow_unregister: true
-allow_preview: false
-registration: true
+allow_preview: true
+registration: false
 registration_password: null
 registration_ac: null
 registration_ac_list:

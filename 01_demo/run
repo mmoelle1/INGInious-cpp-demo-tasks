@@ -11,8 +11,6 @@
 import subprocess, shlex, re, os, yaml
 from inginious import feedback, rst, input
 
-feedback.set_custom_value("highlight", 56)
-
 # Switch working directory to student/
 os.chdir("student")
 
@@ -224,7 +222,7 @@ for line in debug_output.splitlines():
     if not (line.startswith('cc') or line.startswith('g++') or line.startswith('make') or line.startswith('/tmp/') or (line.find('from /opt') > -1)):
         temp_out = temp_out + "\n" + line
         temp_out = temp_out.replace('collect2: ', '')
-        temp_out = temp_out.replace('/opt/rh/devtoolset-7/root/usr/include/c++', 'path')
+        temp_out = temp_out.replace('/opt/rh/devtoolset-8/root/usr/include/c++', 'path')
         temp_out = temp_out.replace('student_code.cxx:', '')
         make_output = temp_out
 
@@ -251,9 +249,14 @@ if p.returncode:
              str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
              "**):" , rst.get_codeblock('', make_output))
     feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+    lines=[]
+    for line in re.findall('.*:.*:.error', rst.get_codeblock('', make_output)):
+        lines.append( int(line.split(':')[0])-1 )
     feedback.set_custom_value("highlight", {
-        "student_code": {"lines": [re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]], "color": "red"},
-})
+        "student_code": [{"lines": lines, "color": "darkred"}],
+    })
+    
     exit(0)
 else:
     feedback.set_global_result("Success")
@@ -280,6 +283,16 @@ if banned_funcs:
 # Remove source files
 subprocess.run("rm -rf *.c *.cxx *.tpl *.h *.hpp *.o", shell=True)
 
+# Get content of uploaded file
+student_upload = input.get_input("student_upload")
+
+if student_upload:
+    filename = input.load_input().get("input").get("student_upload").get("filename")
+    with open(filename, 'w+') as fileUpload:
+        fileUpload.write(student_upload.decode('utf-8'))
+        fileUpload.close()
+
+# Get language (default: en)
 LANG = input.get_input('@lang')
 
 # Run the code in a parallel container

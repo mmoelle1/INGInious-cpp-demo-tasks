@@ -10,13 +10,12 @@ context: |-
     .. container:: collapse
        :name: description
 
-       This is a generic C++ demo tasks for the INGInious platform. 
-
-       It uses three sub-problems to let the student
+       This is a generic C++ demo tasks for the INGInious platform. It uses three sub-problems to let the student
 
        *   fill in the C++ source code (Question 1), 
-       *   choose a C++ standard (Question 2), and
-       *   provide additional command line arguments (Question 3).
+       *   choose a C++ standard (Question 2),
+       *   provide additional command line arguments (Question 3), and
+       *   upload an additional file (Question 4).
 
        **C++ Source Code**
 
@@ -102,6 +101,12 @@ context: |-
        Command line arguments can be passed by providing them in
        quotes and separated by commas in Question 3.
 
+       **File upload**
+
+       An additional text file can be uploaded via the file upload
+       diaglog in Question 4. This file is available from within the
+       C++ source code under the same file name.
+
 environment: cpp-gcc8
 evaluate: last
 groups: false
@@ -182,17 +187,30 @@ problems:
         default: ''
         optional: 'on'
 
-#    student_upload:
-#        header: |-
-#           Upload a file that should be used by your program when it is run. The filename must end with extension ``dat`` and the file size must not exceed 10MB. Leave this field empty if you do not want to upload any file.
-#
-#           *Example:* Upload the file ``text.dat`` with single-line content ``Hello World!``.
-#        max_size: 10485760
-#        allowed_exts:
-#        - .dat
-#        type: file
-#        name: File upload
-#        optional: 'on'
+    student_upload:
+        header: |-
+           Upload a file that should be used by your program when it is run. The filename must end with extension ``dat`` and the file size must not exceed 10MB. Leave this field empty if you do not want to upload any file.
+
+           *Example:* Upload the file ``text.dat`` and read it from within your C++ source code as follows:
+
+           .. code:: cpp
+
+              #include <fstream>
+
+              std::string line;
+              std::ifstream file;
+
+              file.open ("text.dat");
+              while(getline(file, line))
+                std::cout << line << std::endl;
+              file.close();
+
+        max_size: 10485760
+        allowed_exts:
+        - .dat
+        type: file
+        name: File upload
+        optional: 'on'
 
 stored_submissions: 0
 submission_limit:
