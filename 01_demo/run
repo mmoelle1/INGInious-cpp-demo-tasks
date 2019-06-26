@@ -1,0 +1,408 @@
+#!/bin/python3
+
+# Script d'interface entre INGInious et des tests unitaires écrits à l'aide de CUnit
+# Auteurs : Mathieu Xhonneux, Anthony Gégo
+# Licence : GPLv3
+
+# Website setup done by : Matthias Möller
+# Most back end task file modifications done by : Sybold Hijlkema
+# Assignments ported from "https://gitlab.com/mmoelle1/tw3720tu.2017/tree/master" to this website done by : Matthias Möller, Niels de Koeijer, Sybold Hijlkema
+
+import subprocess, shlex, re, os, yaml
+from inginious import feedback, rst, input
+
+feedback.set_custom_value("highlight", 56)
+
+# Switch working directory to student/
+os.chdir("student")
+
+# Read from file which includes, functions and words should be banned
+bannedIncludeList = []
+bannedFunctionList = []
+bannedWordList = []
+with open('config/banned', 'r') as fileBanned:
+    content = fileBanned.read()
+for line in content.splitlines():
+    if (line.startswith('bannedIncludeList')):
+        line = line.replace('bannedIncludeList =', '')
+        for word in line.split(','):
+            word_stripped = word.strip()
+            if(word_stripped != ''):
+                bannedIncludeList.append(word_stripped)
+    if (line.startswith('bannedFunctionList')):
+        line = line.replace('bannedFunctionList =', '')
+        for word in line.split(','):
+            word_stripped = word.strip()
+            if(word_stripped != ''):
+                bannedFunctionList.append(word_stripped)
+    if (line.startswith('bannedWordList')):
+        line = line.replace('bannedWordList =', '')
+        for word in line.split(','):
+            word_stripped = word.strip()
+            if(word_stripped != ''):
+                bannedWordList.append(word_stripped)
+
+# Fetch and save the student input into a file for compilation
+input.parse_template("student_code.cxx.tpl", "student_code.cxx")
+input.parse_template("bridge.cxx.tpl", "bridge.cxx")
+input.parse_template("config/Makefile.inc.tpl", "config/Makefile.inc")
+
+# Custom: Replace "main" with "__main__" in student_code.cxx
+with open('student_code.cxx', 'r') as fileInput:
+    content_raw = fileInput.read()
+    content = content_raw
+
+    # Eliminate all single- and multi-line comments
+    content = re.sub('/\*.*?\*/', ' ', re.sub('//.*', ' ', content.rstrip('\r\n')).replace('\n', ' '))
+
+    if not (re.search('\s*?int\s*?main\s*\((.*?)\)', content)):
+        feedback.set_tag("not_compile", True)
+        feedback.set_global_result("failed")
+
+        admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        admonition = rst.get_admonition("warning", "**The main function must have one of the following forms:**", "- ``int main()``\n- ``int main(int argc, char* argv[])``\n- ``int main(int argc, char** argv)``")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        main = re.search('([a-zA-Z]+?\s+?)main\s*\((.*?)\)', content).group(0)
+        admonition = rst.get_admonition("warning", "**Your main function does not have a return value of type  int:**", rst.get_codeblock('', main))
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        exit(0)
+
+    # Check if user-implemented main function is of the form main[...]([...])
+    if (re.search('main\s*\(\s*?\)', content)):
+        content_raw = re.sub(r'main\s*\(', '__main__(int __argc__, char** __argv__', content_raw)
+    else:
+        # Check if user-implemented main function is of the form main(...,...) 
+        if (re.search('main\s*\((.+?)\)', content).group(0).count(",") != 1):
+            feedback.set_tag("not_compile", True)
+            feedback.set_global_result("failed")
+
+            admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            admonition = rst.get_admonition("warning", "**The main function must have one of the following forms:**", "- ``int main()``\n- ``int main(int argc, char* argv[])``\n- ``int main(int argc, char** argv)``")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            main = re.search('([a-zA-Z]+?\s+?)main\s*\((.+?)\)', content).group(0)
+            admonition = rst.get_admonition("warning", "**Your main function does not provide exactly two parameters:**", rst.get_codeblock('', main))
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            exit(0)
+
+        # Check if user-implemented main function is of the form main( int ..., ...)
+        if not (re.search('main\s*\((\s*?int.*?,.*?)\)', content)):
+            feedback.set_tag("not_compile", True)
+            feedback.set_global_result("failed")
+
+            admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            admonition = rst.get_admonition("warning", "**The main function must have one of the following forms:**", "- ``int main()``\n- ``int main(int argc, char* argv[])``\n- ``int main(int argc, char** argv)``")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            main = re.search('([a-zA-Z]+?\s+?)main\s*\((.+?)\)', content).group(0)
+            admonition = rst.get_admonition("warning", "**The first argument of your main function is not of type int:**", rst.get_codeblock('', main))
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            exit(0)
+
+        # Check if user-implemented main function is of the form main(..., const ...)
+        if (re.search(r'main\s*\((.+?,[^\)]*const[^)]*)\)', content)):
+            feedback.set_tag("not_compile", True)
+            feedback.set_global_result("failed")
+
+            admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            admonition = rst.get_admonition("warning", "**The main function must have one of the following forms:**", "- ``int main()``\n- ``int main(int argc, char* argv[])``\n- ``int main(int argc, char** argv)``")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+
+            main = re.search('([a-zA-Z]+?\s+?)main\s*\((.+?)\)', content).group(0)
+            admonition = rst.get_admonition("warning", "**Your main function makes use of non-permitted constant character:**", rst.get_codeblock('', main))
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            exit(0)
+
+        # Check if user-implemented main function is of the form main(..., char * * ...) or main(..., char * ... [ ] )
+        if not (re.search('main\s*\((.+?,\s*?char\s*?\*\s*?[a-zA-Z0-9_]*?\s*?\[\s*?\]\s*?)|(.+?,\s*?char\s*?\*\s*?\*\s*?[a-zA-Z0-9_]*?\s*?)\)', content)):
+            feedback.set_tag("not_compile", True)
+            feedback.set_global_result("failed")
+
+            admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            admonition = rst.get_admonition("warning", "**The main function must have one of the following forms:**", "- ``int main()``\n- ``int main(int argc, char* argv[])``\n- ``int main(int argc, char** argv)``")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            main = re.search('([a-zA-Z]+?\s+?)main\s*\((.+?)\)', content).group(0)
+            admonition = rst.get_admonition("warning", "**Your main function does not match either of these interfaces:**", rst.get_codeblock('', main))
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+            exit(0)
+
+        content_raw = re.sub(r'main\s*\(', '__main__(', content_raw)
+with open('student_code.cxx', 'w') as fileOutput:
+    fileOutput.write(content_raw)
+    
+content = content.replace(" ", "")
+# Custom: Find banned includes, exit if found
+for bannedInclude in bannedIncludeList:
+    if re.search('#include(\s*)(<|\")(\s*)'+bannedInclude, content):
+        feedback.set_tag("banned_funcs", True)
+        feedback.set_global_result("failed")
+
+        admonition = rst.get_admonition("warning", "**Prerequisite checks failed**", "- Your code does not pass the prerequisite checks. Note that these checks are not part of the C++ standard and will not be performed if you compile your code externally. These extra checks are specified by the lecturer to secure the INGInious web-service and/or for educational purposes to keep you from solving a particular assignment with functionality from the C++ standard library.")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        admonition = rst.get_admonition("warning", "**Your program contains the unauthorized include:**", rst.get_codeblock('', bannedInclude))
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        exit(0)
+        
+# Custom: Find banned functions, exit if found
+for bannedFunction in bannedFunctionList:
+    if re.search(bannedFunction+'(\s*)(<|\()', content):
+        feedback.set_tag("banned_funcs", True)
+        feedback.set_global_result("failed")
+
+        admonition = rst.get_admonition("warning", "**Prerequisite checks failed**", "- Your code does not pass the prerequisite checks. Note that these checks are not part of the C++ standard and will not be performed if you compile your code externally. These extra checks are specified by the lecturer to secure the INGInious web-service and/or for educational purposes to keep you from solving a particular assignment with functionality from the C++ standard library.")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        admonition = rst.get_admonition("warning", "**Your program contains the unauthorized function:**", rst.get_codeblock('', bannedFunction))
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        exit(0)
+        
+# Custom: Find banned words, exit if found
+for bannedWord in bannedWordList:
+    if bannedWord in content:
+        feedback.set_tag("banned_funcs", True)
+        feedback.set_global_result("failed")
+
+        admonition = rst.get_admonition("warning", "**Prerequisite checks failed**", "- Your code does not pass the prerequisite checks. Note that these checks are not part of the C++ standard and will not be performed if you compile your code externally. These extra checks are specified by the lecturer to secure the INGInious web-service and/or for educational purposes to keep you from solving a particular assignment with functionality from the C++ standard library.")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        admonition = rst.get_admonition("warning", "**Your program contains the unauthorized word:**", rst.get_codeblock('', bannedWord))
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        exit(0)
+
+# Check command-line arguments
+with open('bridge.cxx', 'r') as fileBridge:
+    content = fileBridge.read()
+    if (re.search('(?<=// STUDENT_ARGV:).*(?=)', content)):
+        content = re.search('(?<=// STUDENT_ARGV:).*(?=)', content).group(0)
+        if (content):
+            tokens = content.split(',')
+            for token in tokens:
+                if not (re.search('".*?"', token)):
+                    feedback.set_tag("invalid_argv", True)
+                    feedback.set_global_result("failed")
+
+                    admonition = rst.get_admonition("warning", "**Prerequisite checks failed**", "- Your code does not pass the prerequisite checks. Note that these checks are not part of the C++ standard and will not be performed if you compile your code externally. These extra checks are specified by the lecturer to secure the INGInious web-service and/or for educational purposes to keep you from solving a particular assignment with functionality from the C++ standard library.")
+                    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+                    admonition = rst.get_admonition("warning", "**Your command-line arguments are not given in the correct form \"...\",\"...\":**", rst.get_codeblock('', content))
+                    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+                    exit(0)
+
+# Compilation
+p = subprocess.Popen(shlex.split("make"), stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+make_output = p.communicate()[0].decode('utf-8')
+
+# Custom: Parse make_output to replace and remove for clean feedback for the student, this filtering should probably be replaced by something else later on.
+temp_out = ""
+debug_output = make_output.replace("__main__", "main")
+for line in debug_output.splitlines():
+    if line.startswith('bridge.cxx'):
+        break
+    if not (line.startswith('cc') or line.startswith('g++') or line.startswith('make') or line.startswith('/tmp/') or (line.find('from /opt') > -1)):
+        temp_out = temp_out + "\n" + line
+        temp_out = temp_out.replace('collect2: ', '')
+        temp_out = temp_out.replace('/opt/rh/devtoolset-7/root/usr/include/c++', 'path')
+        temp_out = temp_out.replace('student_code.cxx:', '')
+        make_output = temp_out
+
+# If compilation failed, exit with "failed" result
+if p.returncode:
+    feedback.set_tag("not_compile", True)
+    feedback.set_global_result("failed")
+    admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+    # Check specific errors due to pedantic compiler settings
+    if (re.search('-Werror=return-type', rst.get_codeblock('', make_output))):
+        admonition = rst.get_admonition("warning", "**Your code misses a return statement in line " +
+            str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
+            " for a function that was declared to return a non-void type:**", rst.get_codeblock('', make_output))
+
+    elif (re.search('-Werror=reorder', rst.get_codeblock('', make_output))):
+        admonition = rst.get_admonition("warning", "**The order in which attributes in line " +
+            str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
+            " are defined differs from the order in which these attributes are initialized:**", rst.get_codeblock('', make_output))
+
+    else:
+        admonition = rst.get_admonition("warning", "**The compiler returned the following error message** (first error occurs in **line " +
+             str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
+             "**):" , rst.get_codeblock('', make_output))
+    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+    feedback.set_custom_value("highlight", {
+        "student_code": {"lines": [re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]], "color": "red"},
+})
+    exit(0)
+else:
+    feedback.set_global_result("Success")
+    admonition = rst.get_admonition("success", "**Compilation**", "- Your code compiled without errors.")
+    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+# Parse banned functions
+try:
+    banned_funcs = re.findall("BAN_FUNCS\(([a-zA-Z0-9_, ]*)\)", open('tests.c').read())[-1].replace(" ", "").split(",")
+    banned_funcs = list(filter(None, banned_funcs))
+except IndexError:
+    banned_funcs = []
+
+if banned_funcs:
+    p = subprocess.Popen(shlex.split("readelf -s student_code.o"), stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    readelf_output = p.communicate()[0].decode('utf-8')
+    for func in banned_funcs:
+        if re.search("UND {}\n".format(func), readelf_output):
+            feedback.set_tag("banned_funcs", True)
+            feedback.set_global_result("failed")
+            feedback.set_global_feedback("- You are using the unauthorized function {}.\n".format(func))
+            exit(0)
+
+
+# Remove source files
+subprocess.run("rm -rf *.c *.cxx *.tpl *.h *.hpp *.o", shell=True)
+
+LANG = input.get_input('@lang')
+
+# Run the code in a parallel container
+p = subprocess.Popen(shlex.split("run_student --time 20 --hard-time 60 ./tests 123 LANGUAGE={}".format(LANG)), stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+p.communicate()
+
+# If run failed, exit with "failed" result
+if p.returncode:
+    feedback.set_global_result("failed")
+    if p.returncode == 256-8:
+        admonition = rst.get_admonition("warning", "**Runtime error**", "- Your code terminated with an error (**Return code**: " + str(p.returncode) + "). Signal SIGFPE was raised : *Floating Point Exception*.")
+        feedback.set_tag("sigfpe", True)
+    elif p.returncode == 256-11:
+        admonition = rst.get_admonition("warning", "**Runtime error**", "- Your code terminated with an error (**Return code**: " + str(p.returncode) + "). Signal SIGSEGV was raised : *Segmentation Fault*.")
+        feedback.set_tag("sigsegv", True)
+    elif p.returncode == 252:
+        admonition = rst.get_admonition("warning", "**Runtime error**", "- Your code exceeded the maximum admissible memory size (**Return code**: " + str(p.returncode) + ").")
+        feedback.set_tag("memory", True)
+    elif p.returncode == 253:
+        admonition = rst.get_admonition("warning", "**Runtime error**", "- Your code exceeded the maximum admissible runtime (**Return code**: " + str(p.returncode) + ").")
+        feedback.set_tag("timeout", True)
+    else:
+        admonition = rst.get_admonition("warning", "**Runtime error**", "- Your code terminated with an error (**Return code**: " + str(p.returncode) + ").")
+    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+    feedback_data = open('student_code_error').read()
+    feedback.set_global_feedback(rst.indent_block(0, feedback_data, " "), True)
+
+    with open('student_code_error', 'r') as file:
+        student_error = file.read()
+        if re.match("^[[\]<>?~!@#$%\^&()+=|\w\d-]", student_error):
+            student_feedback = student_error;
+            admonition = rst.get_admonition("success", "**Output to std::cerr:**", rst.get_codeblock('', student_feedback))
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+        else:
+            admonition = rst.get_admonition("warning", "**Output to std::cerr:**", "- Your program does not produce any output on **std::cerr** or your output starts with blanks in which case it is suppressed by the system. Please make sure to start your output with a non-blank character if you want your program to generate output.")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+    exit(0)
+#elif run_output:
+#    feedback.set_global_feedback("- Sortie de votre méthode de test:\n" + rst.indent_block(2, rst.get_codeblock('', run_output), " "), True)
+
+# Fetch CUnit test results
+results_raw = [r.split('#') for r in open('results.txt').read().splitlines()]
+results = [{'pid':r[0], 'code':r[1], 'desc':r[2], 'weight':int(r[3]), 'tags': r[4].split(","), 'info_msgs':r[5:]} for r in results_raw]
+
+# Produce feedback
+if all([r['code'] == 'SUCCESS' for r in results]):
+    admonition = rst.get_admonition("success", "**Runtime**", "- Your code ran without errors (**Return code**: " + str(p.returncode) + ").")
+    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+else:
+    admonition = rst.get_admonition("warning", "**Runtime error**", "- Execution of your code failed. (**Return code**: " + str(p.returncode) + ").")
+    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+    exit(0)
+
+score = 0
+total = 0
+tests_result = {}
+
+for test in results:
+    total += test['weight']
+    for tag in test['tags']:
+        if tag != "":
+            feedback.set_tag(tag, True)
+    if test['code'] == 'SUCCESS':
+        score += test['weight']
+# @MM       feedback.set_problem_feedback("* {desc}\n\n  => Success ({weight}/{weight}) pts\n\n".format(**test)+("  Info: {}\n\n".format(" — ".join(test['info_msgs'])) if test['info_msgs'] else '\n'),
+# @MM               test['pid'], True)
+# @MM       tests_result[test['pid']] = True if tests_result.get(test['pid'], True) else False
+    else:
+# @MM       feedback.set_problem_feedback("* {desc}\n\n  => Failed (0/{weight}) pts\n\n".format(**test)+("  Info: {}\n\n".format(" — ".join(test['info_msgs'])) if test['info_msgs'] else '\n'),
+# @MM               test['pid'], True)
+        tests_result[test['pid']] = False
+        
+for pid, result in tests_result.items():
+    if result:
+        feedback.set_problem_result("success", pid)
+    else:
+        feedback.set_problem_result("failed", pid)
+
+with open('../task.yaml', 'r') as stream:
+    problems = yaml.load(stream)['problems']
+    
+    for name, meta in problems.items():
+        if meta['type'] == 'match':
+            answer = input.get_input(name)
+            if answer == meta['answer']:
+                feedback.set_problem_result("success", name)
+                feedback.set_problem_feedback("Your answer is valid.", name, True)
+                score += 1
+            else:
+                feedback.set_problem_result("failed", name)
+                feedback.set_problem_feedback("Your answer is invalid.", name, True)
+
+            total += 1
+
+score = 100*score/(total if not total == 0 else 1)
+feedback.set_grade(score)
+feedback.set_global_result("success" if score >= 50 else "failed")
+
+# Custom: Function to show the output to std::cout in feedback
+with open('student_code_output', 'r') as file:
+    student_output = file.read()
+    if re.match("^[[\]<>?~!@#$%\^&()+=|\w\d-]", student_output):
+        student_feedback = student_output;
+        admonition = rst.get_admonition("success", "**Output to std::cout:**", rst.get_codeblock('', student_feedback))
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+    else:
+        admonition = rst.get_admonition("warning", "**Output to std::cout:**", "- Your program does not produce any output on **std::cout** or your output starts with blanks in which case it is suppressed by the system. Please make sure to start your output with a non-blank character if you want your program to generate output.")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+# Custom: Function to show the output to std::cerr in feedback
+with open('student_code_error', 'r') as file:
+    student_error = file.read()
+    if re.match("^[[\]<>?~!@#$%\^&()+=|\w\d-]", student_error):
+        student_feedback = student_error;
+        admonition = rst.get_admonition("success", "**Output to std::cerr:**", rst.get_codeblock('', student_feedback))
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+    else:
+        admonition = rst.get_admonition("warning", "**Output to std::cerr:**", "- Your program does not produce any output on **std::cerr** or your output starts with blanks in which case it is suppressed by the system. Please make sure to start your output with a non-blank character if you want your program to generate output.")
+        feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+admonition = rst.get_admonition("info", "**Submission:**", "- Use \"**Select for evaluation**\" in the \"**Submission history**\" to make this your definite answer to the assignment.")
+feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+
