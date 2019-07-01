@@ -10,9 +10,7 @@ context: |-
     .. container:: collapse
        :name: description
 
-       This is a C++ demo task for the INGInious platform, where the entire source code is provided in a single file. 
-
-       It uses three sub-problems to let the student
+       This is a generic C++ demo tasks for the INGInious platform. It uses three sub-problems to let the student
 
        *   fill in the C++ source code (Question 1), 
        *   choose a C++ standard (Question 2),
@@ -117,50 +115,37 @@ limits:
     output: '2'
     memory: '100'
     time: '30'
-name: '1. Single source file demo'
+name: '2. Multiple source file demo'
 network_grading: false
-order: 0
+order: 1
 problems:
     student_code:
         language: cpp
         type: code
-        name: 'Student code provided in a single source file'
+        name: 'Main source file'
         default: |
             #include <iostream>
-
-            struct Test
-            {
-            private:
-              int i;
-              double d;
-
-            public:
-              // Change the order of initialization to see the special treatment
-              // of the compiler warning triggered by [-Werror=reorder]
-              Test()
-              : i(0), d(0.0)
-              {}
-            };
-
-            // Comment out the return statement to see the special treatment
-            // of the compiler warning triggered by [-Werror=return-type]
-            int my_exit(){
-              return 0;
-            }
+            #include "auxiliary.hpp"
 
             int main(int argc, char* argv[]){
 
-              if (argc>1)
-                for (auto i=1; i<argc; i++)
-                  std::cout << "Argument #" << i << " : " << argv[i] << std::endl;
-              else
-                std::cout << "Generic output to std::cout!" << std::endl;
-
-              std::cerr << "Generic output to std::cerr!" << std::endl;
-
-              return my_exit();
+              std::cout << hello();
+              return 0;
             }
         header: |-
+    student_code_auxiliary:
+        language: cpp
+        type: code
+        name: 'Auxiliary source file'
+        default: |
+            #include <string>
+
+            std::string hello()
+            {
+              return "Hello World!\n";
+            }
+        header: |-
+                This auxiliary source file can be included by the main source file via the statement ``#include "auxiliary.hpp"``
     student_cxx_standard:
         choices:
         -   text: C++11

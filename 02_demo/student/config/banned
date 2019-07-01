@@ -1,0 +1,12 @@
+# Input here the banned include names:
+bannedIncludeList =
+
+# Input here the banned function names:
+bannedFunctionList =
+
+# Input here the banned words (Not recommended to use this):
+bannedWordList =
+
+# Note: Don't change the layout too much, it is read with a custom function.
+# Expected layout: <listName> = <element1>, <element2>, <element3>
+# The amount of elements are not limited to 3, it is just an example.
