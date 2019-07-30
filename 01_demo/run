@@ -11,6 +11,8 @@
 import subprocess, shlex, re, os, yaml
 from inginious import feedback, rst, input
 
+feedback.set_custom_value("highlight", {})
+
 # Switch working directory to student/
 os.chdir("student")
 
@@ -230,38 +232,60 @@ for line in debug_output.splitlines():
 if p.returncode:
     feedback.set_tag("not_compile", True)
     feedback.set_global_result("failed")
-    admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile.")
+    admonition = rst.get_admonition("error", "**Compilation error**", "- Your code failed to compile with the following errors and warnings." + rst.get_codeblock('', make_output))
     feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
 
-    # Check specific errors due to pedantic compiler settings
-    if (re.search('-Werror=return-type', rst.get_codeblock('', make_output))):
-        admonition = rst.get_admonition("warning", "**Your code misses a return statement in line " +
-            str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
-            " for a function that was declared to return a non-void type:**", rst.get_codeblock('', make_output))
+    lines={}
+    for line in re.findall(r'^.[0-9]*:[0-9]*:.error.*', rst.get_codeblock('', make_output), flags=re.MULTILINE):
+        if not ("student_code" in lines):
+            lines["student_code"] = []
+        lines["student_code"].append( int(line.split(':')[0])-1 )
 
-    elif (re.search('-Werror=reorder', rst.get_codeblock('', make_output))):
-        admonition = rst.get_admonition("warning", "**The order in which attributes in line " +
-            str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
-            " are defined differs from the order in which these attributes are initialized:**", rst.get_codeblock('', make_output))
+        # Check pedantic error: return-type
+        if (re.search('-Werror=return-type', line)):
+            admonition = rst.get_admonition("warning", "**Compiler warning**", "- Your code misses a return statement in line " + str(line.split(':')[0]) +
+                                            " of your main source file for a function that was declared to return a non-void type")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
 
+        # Check pedantic error: reorder
+        if (re.search('will be initialized after.*-Werror=reorder', line)):
+            admonition = rst.get_admonition("warning", "**Compiler warning**", "The order in which attributes in line  " + str(line.split(':')[0]) +
+                                            " of your main source file are defined differs from the order in which these attributes are initialized")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+
+    for line in re.findall(r'.*:[0-9]*:[0-9]*:.error.*', rst.get_codeblock('', make_output), flags=re.MULTILINE):
+        name = "student_code_" + str(line.split('.')[0]).strip()
+        if not (name in lines):
+            lines[name] = []
+        lines[name].append( int(line.split(':')[1])-1 )
+
+        # Check pedantic error: return-type
+        if (re.search('-Werror=return-type', line)):
+            admonition = rst.get_admonition("warning", "**Compiler warning**", "- Your code misses a return statement in line " + str(line.split(':')[1]) +
+                                            " of your " + str(line.split('.')[0]) + " source file for a function that was declared to return a non-void type")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+        # Check pedantic error: reorder
+        if (re.search('will be initialized after.*-Werror=reorder', line)):
+            admonition = rst.get_admonition("warning", "**Compiler warning**", "The order in which attributes in line  " + str(line.split(':')[1]) +
+                                            " of your " + str(line.split('.')[0]) + " source file are defined differs from the order in which these attributes are initialized")
+            feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
+    for item in lines:
+        lines[item] = [{"lines": lines[item], "color": "darkred"}]
+
+    if lines:
+        feedback.set_custom_value("highlight", lines)
     else:
-        admonition = rst.get_admonition("warning", "**The compiler returned the following error message** (first error occurs in **line " +
-             str(re.search('.*:.*:.error', rst.get_codeblock('', make_output)).group(0).split(':')[0]) +
-             "**):" , rst.get_codeblock('', make_output))
-    feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+        feedback.set_custom_value("highlight", {})
 
-    lines=[]
-    for line in re.findall('.*:.*:.error', rst.get_codeblock('', make_output)):
-        lines.append( int(line.split(':')[0])-1 )
-    feedback.set_custom_value("highlight", {
-        "student_code": [{"lines": lines, "color": "darkred"}],
-    })
-    
     exit(0)
 else:
     feedback.set_global_result("Success")
     admonition = rst.get_admonition("success", "**Compilation**", "- Your code compiled without errors.")
     feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+
 # Parse banned functions
 try:
     banned_funcs = re.findall("BAN_FUNCS\(([a-zA-Z0-9_, ]*)\)", open('tests.c').read())[-1].replace(" ", "").split(",")
@@ -415,7 +439,7 @@ with open('student_code_error', 'r') as file:
         admonition = rst.get_admonition("warning", "**Output to std::cerr:**", "- Your program does not produce any output on **std::cerr** or your output starts with blanks in which case it is suppressed by the system. Please make sure to start your output with a non-blank character if you want your program to generate output.")
         feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
 
-admonition = rst.get_admonition("info", "**Submission:**", "- Use \"**Select for evaluation**\" in the \"**Submission history**\" to make this your definite answer to the assignment.")
-feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
+# @MM admonition = rst.get_admonition("info", "**Submission:**", "- Use \"**Select for evaluation**\" in the \"**Submission history**\" to make this your definite answer to the assignment.")
+# @MM feedback.set_global_feedback(rst.indent_block(0, admonition, " "), True)
 
 
